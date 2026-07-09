@@ -1,20 +1,33 @@
-# Telegram Wallet Bot Backend
+# Wallet Buddy TG Bot
 
-TypeScript API for a Telegram wallet bot. Users are identified by `tgUserId`, wallets are generated server-side, private keys are encrypted before storage, and transactions are sent through an Ethereum JSON-RPC provider.
+TypeScript API for a Telegram wallet budy bot. Users are identified by `tgUserId`, wallets are generated server-side, private keys are encrypted before storage, and transactions are sent through an Ethereum JSON-RPC provider.
 
 ## Setup
 
+Start Postgres in docker or locally
+Generate 32 random bytes enryption key, base64 encoded by running 
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+run above command in a terminal, paste the output for ENCRYPTION_KEY_BASE64 in env
+Go to telegram, search for godfather bot, follow instruction to create a bot, paste the token for TELEGRAM_BOT_TOKEN in env
+API_KEYS="dev-secret-key"(optional)
+
+Envs
+
 ```bash
-npm install
-cp .env.example .env
-npx prisma migrate dev --name init
-npm run dev
+PORT=3000
+DATABASE_URL="postgresql://postgres:yourPassWord@localhost:5432/wallet_db?schema=public"
+ETH_RPC_URL="https://sepolia.infura.io/v3/YOUR_API_KEY"
+CHAIN_ID=11155111
+ENCRYPTION_KEY_BASE64=KEY_GENERATED_BY_GIVEN_COMMAND
+TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
 ```
 
-Generate an encryption key:
+# Commands
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+npm install
+npx prisma migrate dev --name init
+npm run dev
 ```
 
 ## Endpoints
@@ -50,15 +63,8 @@ curl -X POST http://localhost:3000/transfer \
 
 `GET /tokens/:tgUserId` cannot discover every ERC20 with only a normal RPC URL. It checks ETH and the configured token list in `src/tokens.ts`. For full arbitrary token discovery, add an indexer provider or store token interactions as they happen.
 
-Use `API_KEYS` in `.env` to require `Authorization: Bearer <key>` or `x-api-key` for wallet and transfer endpoints.
+Use `API_KEYS` in `.env` to require `Authorization: Bearer <key>` or `x-api-key` for wallet and transfer endpoints(optional).
 
-## Telegram Bot
-
-Set `TELEGRAM_BOT_TOKEN` in `.env`, then run:
-
-```bash
-npm run dev
-```
 
 Bot commands:
 
@@ -67,3 +73,9 @@ Bot commands:
 - `/balance` shows ETH and configured token balances.
 - `/sendeth <to> <amount>` sends native ETH.
 - `/transfer <tokenAddress> <to> <amount>` sends an ERC20 token.
+
+[Project Demo Video](https://drive.google.com/file/d/1Fe6gWAHx6i6FHn7ZQOhPv57aSsUfDRD8/view?usp=drivesdk)
+
+## License
+
+This project Made By Rakesh Kumar Barik
