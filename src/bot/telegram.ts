@@ -1,14 +1,20 @@
 import { Telegraf, type Context } from "telegraf";
+import type { InlineKeyboardButton } from "telegraf/types";
 import { env } from "../config/env.js";
 import { HttpError } from "../lib/errors.js";
 import { getAvailableTokens, sendEth, transferErc20 } from "../services/ethereum.js";
-import { createWalletForTgUser, getWalletForTgUser } from "../services/wallets.js";
+import {
+  createWalletForTgUser,
+  getPrivateKeyForTgUser,
+  getWalletForTgUser
+} from "../services/wallets.js";
 
 const mainKeyboard = {
   reply_markup: {
     inline_keyboard: [
       [{ text: "Create wallet", callback_data: "wallet:create" }],
       [{ text: "Show balance", callback_data: "wallet:balance" }],
+      [{ text: "Show private key", callback_data: "wallet:private_key" }],
       [
         { text: "Send ETH", callback_data: "wallet:send_eth" },
         { text: "Send ERC20", callback_data: "wallet:send_erc20" }
@@ -36,6 +42,7 @@ function welcomeMessage() {
     "Commands:",
     "/wallet - create or show your wallet",
     "/balance - show wallet balances",
+    "/privatekey - show your private key in two parts",
     "/sendeth <to> <amount> - send ETH",
     "/transfer <tokenAddress> <to> <amount> - send ERC20"
   ].join("\n");
@@ -79,6 +86,72 @@ function formatBalances(tokens: Awaited<ReturnType<typeof getAvailableTokens>>) 
     .join("\n");
 }
 
+function copyButton(label: string, text: string): InlineKeyboardButton {
+  return {
+    text: label,
+    copy_text: { text }
+  } as unknown as InlineKeyboardButton;
+}
+
+async function replyWithWalletAddress(
+  ctx: Context,
+  created: boolean,
+  walletAddress: string
+) {
+  await ctx.reply(
+    [
+      created ? "Wallet created." : "You already have a wallet.",
+      "",
+      `Address: ${walletAddress}`
+    ].join("\n"),
+    {
+      reply_markup: {
+        inline_keyboard: [[copyButton("Copy address", walletAddress)]]
+      }
+    }
+  );
+}
+
+function privateKeyWarning() {
+  return [
+    "Private key warning:",
+    "",
+    "Anyone with this key can fully control your wallet.",
+    "Only reveal it when you are alone and never share it with anyone.",
+    "",
+    "Tap confirm if you still want to show it."
+  ].join("\n");
+}
+
+function splitPrivateKey(privateKey: string) {
+  const midpoint = Math.ceil(privateKey.length / 2);
+
+  return {
+    firstHalf: privateKey.slice(0, midpoint),
+    secondHalf: privateKey.slice(midpoint)
+  };
+}
+
+async function sendPrivateKeyParts(ctx: Context) {
+  try {
+    const privateKey = await getPrivateKeyForTgUser(tgUserId(ctx));
+    const { firstHalf, secondHalf } = splitPrivateKey(privateKey);
+
+    await ctx.reply(["Private key first half:", firstHalf].join("\n"), {
+      reply_markup: {
+        inline_keyboard: [[copyButton("Copy first half", firstHalf)]]
+      }
+    });
+    await ctx.reply(["Private key second half:", secondHalf].join("\n"), {
+      reply_markup: {
+        inline_keyboard: [[copyButton("Copy second half", secondHalf)]]
+      }
+    });
+  } catch (error) {
+    await ctx.reply(`Could not show private key: ${formatError(error)}`);
+  }
+}
+
 export function createTelegramBot() {
   if (!env.TELEGRAM_BOT_TOKEN) {
     console.log("Telegram bot disabled. Set TELEGRAM_BOT_TOKEN to enable it.");
@@ -110,13 +183,7 @@ export function createTelegramBot() {
     const id = tgUserId(ctx);
     const result = await createWalletForTgUser(id);
 
-    await ctx.reply(
-      [
-        result.created ? "Wallet created." : "You already have a wallet.",
-        "",
-        `Address: ${result.user.walletAddress}`
-      ].join("\n")
-    );
+    await replyWithWalletAddress(ctx, result.created, result.user.walletAddress);
   });
 
   bot.command("balance", async (ctx) => {
@@ -136,6 +203,16 @@ export function createTelegramBot() {
     } catch (error) {
       await ctx.reply(`Could not load balance: ${formatError(error)}`);
     }
+  });
+
+  bot.command("privatekey", async (ctx) => {
+    await ctx.reply(privateKeyWarning(), {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Confirm show private key", callback_data: "wallet:private_key_confirm" }]
+        ]
+      }
+    });
   });
 
   bot.command("sendeth", async (ctx) => {
@@ -174,13 +251,7 @@ export function createTelegramBot() {
     await ctx.answerCbQuery();
     const result = await createWalletForTgUser(tgUserId(ctx));
 
-    await ctx.reply(
-      [
-        result.created ? "Wallet created." : "You already have a wallet.",
-        "",
-        `Address: ${result.user.walletAddress}`
-      ].join("\n")
-    );
+    await replyWithWalletAddress(ctx, result.created, result.user.walletAddress);
   });
 
   bot.action("wallet:balance", async (ctx) => {
@@ -202,6 +273,22 @@ export function createTelegramBot() {
     } catch (error) {
       await ctx.reply(`Could not load balance: ${formatError(error)}`);
     }
+  });
+
+  bot.action("wallet:private_key", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply(privateKeyWarning(), {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Confirm show private key", callback_data: "wallet:private_key_confirm" }]
+        ]
+      }
+    });
+  });
+
+  bot.action("wallet:private_key_confirm", async (ctx) => {
+    await ctx.answerCbQuery();
+    await sendPrivateKeyParts(ctx);
   });
 
   bot.action("wallet:send_eth", async (ctx) => {

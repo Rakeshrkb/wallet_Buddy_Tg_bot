@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { prisma } from "../db.js";
-import { encryptPrivateKey } from "../lib/encryption.js";
+import { decryptPrivateKey, encryptPrivateKey } from "../lib/encryption.js";
+import { HttpError } from "../lib/errors.js";
 
 export async function createWalletForTgUser(tgUserId: string) {
   const existing = await prisma.user.findUnique({ where: { tgUserId } });
@@ -38,5 +39,19 @@ export async function getWalletForTgUser(tgUserId: string) {
       createdAt: true,
       updatedAt: true
     }
+  });
+}
+
+export async function getPrivateKeyForTgUser(tgUserId: string) {
+  const user = await prisma.user.findUnique({ where: { tgUserId } });
+
+  if (!user) {
+    throw new HttpError(404, "Create a wallet first with /wallet.");
+  }
+
+  return decryptPrivateKey({
+    encryptedPrivateKey: user.encryptedPrivateKey,
+    keyIv: user.keyIv,
+    keyAuthTag: user.keyAuthTag
   });
 }
